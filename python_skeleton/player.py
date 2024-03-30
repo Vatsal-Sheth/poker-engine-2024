@@ -41,11 +41,6 @@ class Player(Bot):
         Returns:
             None
         """
-        #my_bankroll = game_state.bankroll # the total number of chips you've gained or lost from the beginning of the game to the start of this round
-        #game_clock = game_state.game_clock # the total number of seconds your bot has left to play this game
-        #round_num = game_state.round_num # the round number from 1 to NUM_ROUNDS
-        #my_cards = round_state.hands[0] # your cards
-        #big_blind = bool(active) # True if you are the big blind
         self.log = []
         self.log.append("================================")
         self.log.append("new round")
@@ -63,11 +58,6 @@ class Player(Bot):
         Returns:
             Your logs.
         """
-        #my_delta = terminal_state.deltas[active] # your bankroll change from this round
-        #previous_state = terminal_state.previous_state # RoundState before payoffs
-        #street = previous_state.street # 0, 3, 4, or 5 representing when this round ended
-        #my_cards = previous_state.hands[0] # your cards
-        #opp_cards = previous_state.hands[1] # opponent's cards or [] if not revealed
         self.log.append("game over")
         self.log.append("================================\n")
 
@@ -77,29 +67,10 @@ class Player(Bot):
         """
         Where the magic happens - your code should implement this function.
         Called any time the engine needs an action from your bot.
-
-        Args:
-            observation (dict): The observation of the current state.
-            {
-                "legal_actions": List of the Actions that are legal to take.
-                "street": 0, 1, or 2 representing pre-flop, flop, or river respectively
-                "my_cards": List[str] of your cards, e.g. ["1s", "2h"]
-                "board_cards": List[str] of the cards on the board
-                "my_pip": int, the number of chips you have contributed to the pot this round of betting
-                "opp_pip": int, the number of chips your opponent has contributed to the pot this round of betting
-                "my_stack": int, the number of chips you have remaining
-                "opp_stack": int, the number of chips your opponent has remaining
-                "my_bankroll": int, the number of chips you have won or lost from the beginning of the game to the start of this round
-                "min_raise": int, the smallest number of chips for a legal bet/raise
-                "max_raise": int, the largest number of chips for a legal bet/raise
-            }
-
-        Returns:
-            Action: The action you want to take.
         """
-        my_contribution = STARTING_STACK - observation["my_stack"] # the number of chips you have contributed to the pot
-        opp_contribution = STARTING_STACK - observation["opp_stack"] # the number of chips your opponent has contributed to the pot
-        continue_cost = observation["opp_pip"] - observation["my_pip"] # the number of chips needed to stay in the pot
+        my_contribution = STARTING_STACK - observation["my_stack"]
+        opp_contribution = STARTING_STACK - observation["opp_stack"]
+        continue_cost = observation["opp_pip"] - observation["my_pip"]
 
         self.log.append("My cards: " + str(observation["my_cards"]))
         self.log.append("Board cards: " + str(observation["board_cards"]))
@@ -107,13 +78,55 @@ class Player(Bot):
         self.log.append("My contribution: " + str(my_contribution))
         self.log.append("My bankroll: " + str(observation["my_bankroll"]))
 
-        if RaiseAction in observation["legal_actions"] and random.random() < 0.99:
-            min_cost = observation["min_raise"] - observation["my_pip"] # the cost of a minimum bet/raise
-            max_cost = observation["max_raise"] - observation["my_pip"] # the cost of a maximum bet/raise
-            return RaiseAction(observation["max_raise"])
+        # Estimate the strength of your hand
+        hand_strength = estimate_hand_strength(observation["my_cards"], observation["board_cards"])
+
+        # Implement pot odds and pot equity considerations
+        pot_odds = continue_cost / (continue_cost + opp_contribution + observation["opp_pip"])
+        pot_equity = hand_strength
+
+        if pot_equity > pot_odds:
+            # Call or raise if pot odds are favorable
+            if RaiseAction in observation["legal_actions"] and random.random() < 0.5:
+                min_cost = observation["min_raise"] - observation["my_pip"]
+                max_cost = observation["max_raise"] - observation["my_pip"]
+                raise_amount = random.randint(min_cost, max_cost)
+                return RaiseAction(raise_amount)
+            else:
+                return CallAction()
+        else:
+            # Fold if pot odds are not favorable
+            return FoldAction()
+
+        # Implement bluffing and semi-bluffing strategies
+        if RaiseAction in observation["legal_actions"] and random.random() < 0.2:
+            min_cost = observation["min_raise"] - observation["my_pip"]
+            max_cost = observation["max_raise"] - observation["my_pip"]
+            raise_amount = random.randint(min_cost, max_cost)
+            return RaiseAction(raise_amount)
+
         if CheckAction in observation["legal_actions"]:
             return CheckAction()
         return CallAction()
+
+    def estimate_hand_strength(self, my_cards: list, board_cards: list) -> float:
+        """
+        Estimate the strength of the hand based on the player's cards and the board cards.
+        This is a simplified implementation and can be improved with more advanced techniques.
+        """
+        # Convert card strings to numerical values
+        value_map = {
+            '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+        }
+        my_values = [value_map[card[0]] for card in my_cards]
+        board_values = [value_map[card[0]] for card in board_cards]
+
+        # Calculate the hand strength based on the highest pair or high card
+        all_values = my_values + board_values
+        all_values.sort(reverse=True)
+        strength = all_values[0] / 14.0  # Normalize the highest value to be between 0 and 1
+
+        return strength
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
